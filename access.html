@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESMERALDA FINANCE Home</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <style>
+        body {
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: url('images/login-bg.jpg') no-repeat center center fixed;
+            background-size: cover;
+            color: #222;
+        }
+        .access-container {
+            background: rgba(255,255,255,0.97);
+            max-width: 420px;
+            margin: 80px auto 0 auto;
+            border-radius: 18px;
+            box-shadow: 0 8px 32px rgba(20,90,50,0.18);
+            padding: 2.5rem 2rem 2rem 2rem;
+            text-align: center;
+            position: relative;
+        }
+        .access-title {
+            color: #145a32;
+            margin-bottom: 2rem;
+            font-size: 2rem;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .access-btn {
+            width: 90%;
+            padding: 16px;
+            margin: 18px 0;
+            background: linear-gradient(90deg, #229954 70%, #145a32 100%);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.15rem;
+            font-weight: bold;
+            box-shadow: 0 2px 12px rgba(34,153,84,0.13);
+            cursor: pointer;
+            transition: background 0.18s, transform 0.12s;
+        }
+        .access-btn:hover, .access-btn.selected {
+            background: linear-gradient(90deg, #145a32 60%, #229954 100%);
+            transform: scale(1.08);
+        }
+        .access-icon {
+            font-size: 1.5rem;
+            vertical-align: middle;
+            margin-right: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="access-container">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;margin-bottom:1.5rem;">
+            <img src="images/logo.png" alt="Esmeralda Logo" style="width:100px;height:100px;margin-bottom:12px;">
+            <div class="access-title" style="margin-bottom:0;">Access</div>
+        </div>
+        <button class="access-btn" id="salesBtn">
+            <span class="access-icon">📊</span> Sales vs Expenses
+        </button>
+        <button class="access-btn" id="inventoryBtn">
+            <span class="access-icon">📦</span> Inventory
+        </button>
+    </div>
+    <script>
+        // Highlight selected button visually
+        function selectBtn(btn) {
+            document.querySelectorAll('.access-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+        }
+        document.getElementById('salesBtn').onclick = function() {
+            selectBtn(this);
+            setTimeout(() => { window.location.href = 'dashboard.html'; }, 120);
+        };
+        document.getElementById('inventoryBtn').onclick = function() {
+            selectBtn(this);
+            setTimeout(() => { window.location.href = 'inventory.html'; }, 120);
+        };
+    </script>
+</body>
+</html>

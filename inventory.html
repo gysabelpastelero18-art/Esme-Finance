@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory - ESMERALDA Dashboard</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <style>
+        body {
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: url('images/login-bg.jpg') no-repeat center center fixed;
+            background-size: cover;
+            color: #222;
+        }
+        .dashboard-container {
+            background: rgba(255,255,255,0.97);
+            max-width: 700px;
+            margin: 60px auto 0 auto;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(20,90,50,0.18);
+            padding: 2.5rem 2rem 2rem 2rem;
+            text-align: center;
+            position: relative;
+        }
+        .branch-btn {
+            padding: 18px 36px;
+            margin: 18px 18px 32px 18px;
+            background: linear-gradient(90deg, #229954 70%, #145a32 100%);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.25rem;
+            font-weight: bold;
+            box-shadow: 0 2px 12px rgba(34,153,84,0.13);
+            cursor: pointer;
+            transition: background 0.18s, transform 0.12s;
+        }
+        .branch-btn.selected, .branch-btn:active {
+            background: linear-gradient(90deg, #145a32 60%, #229954 100%);
+            transform: scale(1.10);
+            outline: 2.5px solid #229954;
+        }
+        .branch-btn:hover {
+            background: linear-gradient(90deg, #145a32 60%, #229954 100%);
+            transform: scale(1.06);
+        }
+        .site-title {
+            color: #145a32;
+            margin-bottom: 2rem;
+            font-size: 2rem;
+            letter-spacing: 1px;
+        }
+        .logout-btn {
+            position: absolute;
+            top: 24px;
+            right: 32px;
+            background: #229954;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            padding: 8px 18px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .home-btn {
+            position: absolute;
+            top: 24px;
+            left: 32px;
+            background: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            box-shadow: 0 2px 8px rgba(20,90,50,0.12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .home-btn span {
+            font-size: 2rem;
+            color: #229954;
+        }
+        .inventory-table {
+            width: 100%;
+            margin: 0 auto 1rem auto;
+            border-collapse: collapse;
+            background: #fff;
+        }
+        .inventory-table th, .inventory-table td {
+            border: 1px solid #229954;
+            padding: 8px;
+            color: #145a32;
+        }
+        .inventory-table th {
+            background: #229954;
+            color: #fff;
+        }
+        .no-data {
+            color: #b94a48;
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <button class="home-btn" onclick="window.location.href='access.html'" title="Home">
+            <span>🏠</span>
+        </button>
+        <button class="logout-btn" onclick="window.location.href='index.html'">Logout</button>
+        <h1 class="site-title">Inventory</h1>
+        <div>
+            <button class="branch-btn" id="mayonBtn">Mayon</button>
+            <button class="branch-btn" id="oneBaleteBtn">One Balete</button>
+        </div>
+        <div id="summaryDiv"></div>
+        <div id="branchOptions" style="display:none;">
+            <div style="margin-bottom:1rem;">
+                <label for="fromDate">From:</label>
+                <input type="date" id="fromDate">
+                <label for="toDate">To:</label>
+                <input type="date" id="toDate">
+                <button id="filterBtn" style="padding:4px 12px;background:#229954;color:#fff;border:none;border-radius:5px;">Show</button>
+            </div>
+            <div id="deptBtns" style="margin-bottom:1rem;"></div>
+            <div id="detailsDiv"></div>
+        </div>
+        <div id="inventoryTableDiv"></div>
+    </div>
+    <script>
+        // Inventory data with departments
+        const inventoryData = {
+            Mayon: [
+                { department: "Bakery", item: "Bread Flour", qty: 50, unit: "kg", lastUpdated: "2025-08-01" },
+                { department: "Bar", item: "Soda Water", qty: 40, unit: "L", lastUpdated: "2025-08-01" },
+                { department: "Cashier", item: "Receipt Paper", qty: 20, unit: "rolls", lastUpdated: "2025-08-01" },
+                { department: "Commissary", item: "Chicken Breast", qty: 120, unit: "kg", lastUpdated: "2025-08-01" },
+                { department: "Dessert", item: "Sugar", qty: 60, unit: "kg", lastUpdated: "2025-08-01" },
+                { department: "Main Kitchen", item: "Rice", qty: 250, unit: "kg", lastUpdated: "2025-08-01" },
+                { department: "Warehouse", item: "Soy Sauce", qty: 30, unit: "L", lastUpdated: "2025-08-01" }
+            ],
+            "One Balete": [
+                { department: "Bakery", item: "Bread Flour", qty: 30, unit: "kg", lastUpdated: "2025-08-01" },
+                { department: "Bar", item: "Soda Water", qty: 25, unit: "L", lastUpdated: "2025-08-01" },
+                { department: "Dessert", item: "Sugar", qty: 35, unit: "kg", lastUpdated: "2025-08-01" },
+                { department: "Kitchen", item: "Chicken Breast", qty: 80, unit: "kg", lastUpdated: "2025-08-01" },
+                { department: "Storageroom", item: "Rice", qty: 180, unit: "kg", lastUpdated: "2025-08-01" }
+            ]
+        };
+
+        const mayonDepartments = [
+            "Bakery", "Bar", "Cashier", "Commissary", "Dessert", "Main Kitchen", "Warehouse"
+        ];
+
+        const oneBaleteDepartments = [
+            "Bakery", "Bar", "Dessert", "Kitchen", "Storageroom"
+        ];
+
+        // --- Summary rendering ---
+        function renderBranchSummary(branch, departments) {
+    const data = inventoryData[branch];
+    // Group by department and sum amount (qty * unit price)
+    // For demo, let's assume each item has a price property (add if missing)
+    const summary = {};
+    let total = 0;
+    data.forEach(row => {
+        // Add a price property if not present (for demo, use 100 as default)
+        const price = row.price !== undefined ? row.price : 100;
+        const amount = (Number(row.qty) || 0) * price;
+        if (!summary[row.department]) summary[row.department] = 0;
+        summary[row.department] += amount;
+        total += amount;
+    });
+    return `
+        <div style="flex:1;min-width:260px;margin:0 12px 24px 12px;">
+            <h3 style="color:#229954;">${branch} Summary</h3>
+            <table class="inventory-table">
+                <tr>
+                    <th>Department</th>
+                    <th>Total Amount</th>
+                </tr>
+                ${departments.map(dept => `
+                    <tr>
+                        <td>${dept}</td>
+                        <td style="text-align:right;">₱${(summary[dept] || 0).toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                    </tr>
+                `).join('')}
+                <tr>
+                    <th>Total</th>
+                    <th style="text-align:right;">₱${total.toLocaleString(undefined, {minimumFractionDigits:2})}</th>
+                </tr>
+            </table>
+        </div>
+    `;
+}
+
+// --- Render details table ---
+function renderDetails(branch, departments, selectedDept, from, to) {
+    let filtered = inventoryData[branch];
+    if (from) filtered = filtered.filter(row => row.lastUpdated >= from);
+    if (to) filtered = filtered.filter(row => row.lastUpdated <= to);
+    if (selectedDept) filtered = filtered.filter(row => row.department === selectedDept);
+
+    // Group by department and sum amount (qty * unit price)
+    const summary = {};
+    filtered.forEach(row => {
+        const price = row.price !== undefined ? row.price : 100;
+        const amount = (Number(row.qty) || 0) * price;
+        if (!summary[row.department]) summary[row.department] = 0;
+        summary[row.department] += amount;
+    });
+
+    document.getElementById('detailsDiv').innerHTML = `
+        <h4 style="color:#229954;">${selectedDept ? selectedDept + ' ' : ''}Summary</h4>
+        <table class="inventory-table">
+            <tr>
+                <th>Department</th>
+                <th>Total Amount</th>
+            </tr>
+            ${
+                Object.keys(summary).length
+                ? Object.entries(summary).map(([dept, amount]) => `
+                    <tr>
+                        <td>${dept}</td>
+                        <td style="text-align:right;">₱${amount.toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                    </tr>
+                `).join('')
+                : `<tr><td colspan="2" style="text-align:center;">No data</td></tr>`
+            }
+        </table>
+    `;
+}
+        function showBranchSummaries() {
+            document.getElementById('summaryDiv').innerHTML = `
+                <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:24px;">
+                    ${renderBranchSummary('Mayon', mayonDepartments)}
+                    ${renderBranchSummary('One Balete', oneBaleteDepartments)}
+                </div>
+            `;
+            document.getElementById('branchOptions').style.display = 'none';
+            document.getElementById('inventoryTableDiv').style.display = 'none';
+        }
+
+        // --- Branch button logic ---
+        document.getElementById('mayonBtn').onclick = function() {
+            selectBranchBtn('mayonBtn');
+            showBranchOptions('Mayon', mayonDepartments);
+        };
+        document.getElementById('oneBaleteBtn').onclick = function() {
+            selectBranchBtn('oneBaleteBtn');
+            showBranchOptions('One Balete', oneBaleteDepartments);
+        };
+
+        function selectBranchBtn(btnId) {
+            document.getElementById('mayonBtn').classList.remove('selected');
+            document.getElementById('oneBaleteBtn').classList.remove('selected');
+            document.getElementById(btnId).classList.add('selected');
+        }
+
+        // --- Show branch options (date, dept, details) ---
+        function showBranchOptions(branch, departments) {
+    // Show branch title above summary
+    document.getElementById('summaryDiv').innerHTML = `
+        <h2 style="color:#229954;margin-bottom:1rem;">${branch} Inventory</h2>
+    `;
+    document.getElementById('branchOptions').style.display = '';
+    document.getElementById('inventoryTableDiv').style.display = 'none';
+    // Set default date range
+    const dates = inventoryData[branch].map(row => row.lastUpdated);
+    document.getElementById('fromDate').value = dates.length ? dates.reduce((a, b) => a < b ? a : b) : '';
+    document.getElementById('toDate').value = dates.length ? dates.reduce((a, b) => a > b ? a : b) : '';
+    renderDeptButtons(departments, "");
+    renderDetails(branch, departments, "", document.getElementById('fromDate').value, document.getElementById('toDate').value);
+
+    // Filter button
+    document.getElementById('filterBtn').onclick = function() {
+        renderDetails(branch, departments, "", document.getElementById('fromDate').value, document.getElementById('toDate').value);
+    };
+    // Department buttons
+    document.querySelectorAll('#deptBtns .branch-btn').forEach(btn => {
+        btn.onclick = function() {
+            const dept = this.getAttribute('data-dept');
+            renderDeptButtons(departments, dept);
+            renderDetails(branch, departments, dept, document.getElementById('fromDate').value, document.getElementById('toDate').value);
+        };
+    });
+}
+
+        // --- Render department buttons ---
+        function renderDeptButtons(departments, selected) {
+            document.getElementById('deptBtns').innerHTML = departments.map(dept => `
+                <button class="branch-btn${selected === dept ? ' selected' : ''}" data-dept="${dept}" style="padding:10px 22px;margin:6px 8px 12px 0;font-size:1rem;">
+                    ${dept}
+                </button>
+            `).join('');
+        }
+
+        // --- Render details table ---
+        function renderDetails(branch, departments, selectedDept, from, to) {
+    let filtered = inventoryData[branch];
+    if (from) filtered = filtered.filter(row => row.lastUpdated >= from);
+    if (to) filtered = filtered.filter(row => row.lastUpdated <= to);
+    if (selectedDept) filtered = filtered.filter(row => row.department === selectedDept);
+
+    // Group by department and sum amount (qty * unit price)
+    const summary = {};
+    filtered.forEach(row => {
+        const price = row.price !== undefined ? row.price : 100;
+        const amount = (Number(row.qty) || 0) * price;
+        if (!summary[row.department]) summary[row.department] = 0;
+        summary[row.department] += amount;
+    });
+
+    // Sort departments alphabetically
+    const sortedDepartments = Object.keys(summary).sort();
+
+    // Calculate total
+    const total = sortedDepartments.reduce((sum, dept) => sum + summary[dept], 0);
+
+    document.getElementById('detailsDiv').innerHTML = `
+    <h4 style="color:#229954;">${selectedDept ? selectedDept + ' ' : ''}Summary</h4>
+    <table class="inventory-table">
+        <tr>
+            <th style="text-align:left;">Department</th>
+            <th>Total Amount</th>
+        </tr>
+        ${
+            sortedDepartments.length
+            ? sortedDepartments.map(dept => `
+                <tr>
+                    <td style="text-align:left;">${dept}</td>
+                    <td style="text-align:right;">₱${summary[dept].toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                </tr>
+            `).join('')
+            : `<tr><td colspan="2" style="text-align:center;">No data</td></tr>`
+        }
+        <tr>
+            <th style="text-align:left;">Total</th>
+            <th style="text-align:right;">₱${total.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</th>
+        </tr>
+    </table>
+    `;
+}
+
+        // --- On load: show only branch buttons and summary ---
+        showBranchSummaries();
+    </script>
+</body>
+</html>

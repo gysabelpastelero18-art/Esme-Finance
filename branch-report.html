@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Branch Report - ESMERALDA Dashboard</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: url('images/login-bg.jpg') no-repeat center center fixed;
+            background-size: cover;
+            color: #222;
+        }
+        .dashboard-container {
+            background: rgba(255,255,255,0.97);
+            max-width: 900px;
+            margin: 60px auto 0 auto;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(20,90,50,0.18);
+            padding: 2.5rem 2rem 2rem 2rem;
+            text-align: center;
+            position: relative;
+        }
+        .logout-btn {
+            position: absolute;
+            top: 24px;
+            right: 32px;
+            background: #229954;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            padding: 8px 18px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .site-title {
+            color: #145a32;
+            margin-bottom: 1.5rem;
+            font-size: 2.2rem;
+            letter-spacing: 1px;
+        }
+        .branch-report {
+            background: #f8f8f8;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            padding: 1.5rem 1rem;
+            box-shadow: 0 2px 12px rgba(34,153,84,0.07);
+        }
+        .report-table {
+            width: 100%;
+            margin: 0 auto 1rem auto;
+            border-collapse: collapse;
+            background: #fff;
+        }
+        .report-table th, .report-table td {
+            border: 1px solid #229954;
+            padding: 8px;
+            color: #145a32;
+        }
+        .report-table th {
+            background: #229954;
+            color: #fff;
+        }
+        .import-btn {
+            background: #229954;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            padding: 8px 18px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-bottom: 18px;
+        }
+        .back-btn {
+            position: absolute;
+            top: 24px;
+            left: 32px;
+            background: #2874A6;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            padding: 8px 18px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .active-btn {
+            outline: 2.5px solid #229954 !important;
+            z-index: 2;
+            opacity: 1 !important;
+            transform: scale(1.18);
+            box-shadow: 0 4px 24px rgba(34,153,84,0.18);
+            transition: transform 0.18s, box-shadow 0.18s, outline 0.18s;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Home icon button, spaced further from back button -->
+        <button class="home-btn" onclick="window.location.href='access.html'" title="Home"
+            style="position:absolute;top:10px;left:120px;background:#fff;border:none;border-radius:50%;width:48px;height:48px;box-shadow:0 2px 8px rgba(20,90,50,0.12);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+            <span style="font-size:2rem;color:#229954;">🏠</span>
+        </button>
+        <button class="back-btn" onclick="window.location.href='dashboard.html'">Back</button>
+        <button class="logout-btn" onclick="window.location.href='index.html'">Logout</button>
+        <h1 class="site-title" id="branchTitle"></h1>
+        <div id="dateRangeDiv" style="margin-bottom:1rem;"></div>
+        <div style="margin-bottom:1rem;display:flex;gap:1rem;justify-content:center;">
+            <button id="viewMenuBtn" style="padding:6px 18px;background:#229954;color:#fff;border:none;border-radius:5px;">View Menu</button>
+            <button id="viewSalesDetailsBtn" style="padding:6px 18px;background:#145a32;color:#fff;border:none;border-radius:5px;">View Sales Details</button>
+            <button id="viewByWeekBtn" style="padding:6px 18px;background:#2874A6;color:#fff;border:none;border-radius:5px;">View By Week</button>
+            <button id="viewByMonthBtn" style="padding:6px 18px;background:#884EA0;color:#fff;border:none;border-radius:5px;">View By Month</button>
+        </div>
+        <div id="branchGraphDiv" style="margin-bottom:2rem;"></div>
+        <div id="branchReportTables"></div>
+    </div>
+    <script>
+        let data = JSON.parse(localStorage.getItem('esmeraldaData')) || {
+            branches: [
+                { name: "Mayon", sales: [], expenses: [] },
+                { name: "One Balete", sales: [], expenses: [] }
+            ]
+        };
+
+        function getBranchIdx() {
+            const params = new URLSearchParams(window.location.search);
+            return parseInt(params.get('branch')) || 0;
+        }
+
+        function excelDateToISO(dateValue) {
+            if (typeof dateValue === "number") {
+                const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+                const ms = dateValue * 24 * 60 * 60 * 1000;
+                const d = new Date(excelEpoch.getTime() + ms);
+                return d.toISOString().slice(0, 10);
+            }
+            if (typeof dateValue === "string" && dateValue.length >= 8) {
+                const d = new Date(dateValue);
+                if (!isNaN(d)) return d.toISOString().slice(0, 10);
+            }
+            return "";
+        }
+
+        let minDate = "", maxDate = "";
+        let filteredSales = [], filteredExpenses = [];
+        let branch = data.branches[getBranchIdx()];
+
+        function setupDateRange() {
+            let allDates = branch.sales.map(x => x.date).concat(branch.expenses.map(x => x.date)).filter(Boolean);
+            if (allDates.length) {
+                minDate = allDates.reduce((a, b) => a < b ? a : b);
+                maxDate = allDates.reduce((a, b) => a > b ? a : b);
+            }
+            document.getElementById('dateRangeDiv').innerHTML = `
+                <label for="fromDate">From:</label>
+                <input type="date" id="fromDate" value="${minDate}">
+                <label for="toDate">To:</label>
+                <input type="date" id="toDate" value="${maxDate}">
+                <button id="filterBranchBtn" style="padding:4px 12px;background:#229954;color:#fff;border:none;border-radius:5px;">Show</button>
+            `;
+            document.getElementById('filterBranchBtn').onclick = filterBranchData;
+            filterBranchData();
+        }
+
+        function filterBranchData() {
+            const fromDate = document.getElementById('fromDate').value;
+            const toDate = document.getElementById('toDate').value;
+            filteredSales = branch.sales.filter(x => (!fromDate || x.date >= fromDate) && (!toDate || x.date <= toDate));
+            filteredExpenses = branch.expenses.filter(x => (!fromDate || x.date >= fromDate) && (!toDate || x.date <= toDate));
+            renderBranchGraph();
+            renderBranchSummaries();
+        }
+
+        function renderBranchGraph() {
+            document.getElementById('branchGraphDiv').innerHTML = `<canvas id="branchChart" height="80"></canvas>`;
+            const salesTotal = filteredSales.reduce((sum, item) => sum + Number(item.amount), 0);
+            const expensesTotal = filteredExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
+
+            const ctx = document.getElementById('branchChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Sales', 'Expenses'],
+                    datasets: [{
+                        label: 'Amount',
+                        data: [salesTotal, expensesTotal],
+                        backgroundColor: ['#229954', '#b94a48']
+                    }]
+                },
+                options: {
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        function renderBranchSummaries() {
+            const salesDept = {};
+            filteredSales.forEach(item => {
+                salesDept[item.department] = (salesDept[item.department] || 0) + Number(item.amount);
+            });
+            const totalSales = Object.values(salesDept).reduce((sum, amt) => sum + amt, 0);
+
+            const expensesDept = {};
+            filteredExpenses.forEach(item => {
+                expensesDept[item.department] = (expensesDept[item.department] || 0) + Number(item.amount);
+            });
+            const totalExpenses = Object.values(expensesDept).reduce((sum, amt) => sum + amt, 0);
+
+            document.getElementById('branchReportTables').innerHTML = `
+                <h3>Sales Summary by Department</h3>
+                <table class="report-table">
+                    <tr><th>Department</th><th>Total Sales Amount</th></tr>
+                    ${Object.entries(salesDept).map(([dept, amt]) => `<tr><td>${dept}</td><td>₱${amt.toLocaleString()}</td></tr>`).join('')}
+                    <tr><th>Total Sales</th><th>₱${totalSales.toLocaleString()}</th></tr>
+                </table>
+                <h3>Expenses Summary by Department</h3>
+                <table class="report-table">
+                    <tr><th>Department</th><th>Total Expenses Amount</th></tr>
+                    ${Object.entries(expensesDept).map(([dept, amt]) => `<tr><td>${dept}</td><td>₱${amt.toLocaleString()}</td></tr>`).join('')}
+                    <tr><th>Total Expenses</th><th>₱${totalExpenses.toLocaleString()}</th></tr>
+                </table>
+            `;
+        }
+
+        function renderMenuSales(sales) {
+    const departments = [...new Set(sales.map(item => item.department).filter(Boolean))];
+    document.getElementById('branchReportTables').innerHTML = `
+        <div style="margin-bottom:1rem;display:flex;gap:1rem;justify-content:center;align-items:center;">
+            <label for="deptSelectMenu">Department:</label>
+            <select id="deptSelectMenu">
+                <option value="">All</option>
+                ${departments.map(d => `<option value="${d}">${d}</option>`).join('')}
+            </select>
+            <label for="prodSearchMenu">Product Name:</label>
+            <input type="text" id="prodSearchMenu" placeholder="Search product name..." style="padding:4px 8px;border-radius:5px;border:1px solid #229954;">
+            <button id="filterMenuSalesBtn" style="padding:4px 12px;background:#229954;color:#fff;border:none;border-radius:5px;">Filter</button>
+        </div>
+        <div id="top10MenuTableDiv" style="margin-top:2rem;"></div>
+        <div id="menuSalesTableDiv"></div>
+    `;
+    renderTop10MenuTable(sales);
+    renderMenuSalesTable(sales);
+
+    document.getElementById('filterMenuSalesBtn').onclick = () => {
+        const dept = document.getElementById('deptSelectMenu').value;
+        const prodSearch = document.getElementById('prodSearchMenu').value.trim().toLowerCase();
+        let filtered = sales;
+        if (dept) filtered = filtered.filter(item => item.department === dept);
+        if (prodSearch) filtered = filtered.filter(item => item.description.toLowerCase().includes(prodSearch));
+        renderTop10MenuTable(filtered);
+        renderMenuSalesTable(filtered);
+    };
+}
+
+function renderMenuSalesTable(sales) {
+    function fmt(num) {
+        return Number(num).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    const summary = {};
+    sales.forEach(item => {
+        const key = item.department + '|' + item.description;
+        if (!summary[key]) {
+            summary[key] = {
+                department: item.department,
+                description: item.description,
+                amount: 0
+            };
+        }
+        summary[key].amount += Number(item.amount) || 0;
+    });
+    const summarizedSales = Object.values(summary).sort((a, b) => b.amount - a.amount);
+
+    const table = summarizedSales.length ? `
+        <h3>All Sales Data (Summarized by Product Name)</h3>
+        <table class="report-table" style="text-align:left;">
+            <tr>
+                <th>Department</th>
+                <th>Product Name</th>
+                <th style="text-align:right;">Total Amount</th>
+            </tr>
+            ${summarizedSales.map(item => `
+                <tr>
+                    <td>${item.department}</td>
+                    <td>${item.description}</td>
+                    <td style="text-align:right;">₱${fmt(item.amount)}</td>
+                </tr>
+            `).join('')}
+        </table>
+    ` : '<div style="color:#b94a48;">No sales data imported.</div>';
+    document.getElementById('menuSalesTableDiv').innerHTML = table;
+}
+
+// --- Top 10 Menu Table ---
+function renderTop10MenuTable(sales) {
+    function fmt(num) {
+        return Number(num).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    // Group by menu/description
+    const menuMap = {};
+    sales.forEach(item => {
+        const key = item.description || '';
+        if (!menuMap[key]) {
+            menuMap[key] = {
+                description: item.description,
+                qty: 0,
+                net: 0
+            };
+        }
+        menuMap[key].qty += Number(item.qty) || 0;
+        menuMap[key].net += Number(item.amount) || 0;
+    });
+    // Sort by net descending, take top 10
+    const top10 = Object.values(menuMap)
+        .sort((a, b) => b.net - a.net)
+        .slice(0, 10);
+
+    const table = top10.length ? `
+        <h3>Top 10 Menu (by Net Sales)</h3>
+        <table class="report-table" style="text-align:left;">
+            <tr>
+                <th>Rank</th>
+                <th>Product Name</th>
+                <th style="text-align:right;">Total Qty</th>
+                <th style="text-align:right;">Total Net</th>
+            </tr>
+            ${top10.map((item, idx) => `
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td>${item.description}</td>
+                    <td style="text-align:right;">${fmt(item.qty)}</td>
+                    <td style="text-align:right;">₱${fmt(item.net)}</td>
+                </tr>
+            `).join('')}
+        </table>
+    ` : '';
+    document.getElementById('top10MenuTableDiv').innerHTML = table;
+}
+
+        function renderSalesDetails(sales) {
+            const sorted = [...sales].sort((a, b) => {
+                if (a.invoiceNo && b.invoiceNo) {
+                    return String(a.invoiceNo).localeCompare(String(b.invoiceNo));
+                }
+                return (a.date || '') > (b.date || '') ? 1 : -1;
+            });
+
+            document.getElementById('branchReportTables').innerHTML = `
+                <h3>Sales Details</h3>
+                <table class="report-table">
+                    <tr>
+                        <th>Date</th>
+                        <th>Product Name</th>
+                        <th>Qty</th>
+                        <th>Price</th>
+                        <th>Subtotal</th>
+                        <th>Net Amount</th>
+                    </tr>
+                    ${sorted.map(item => `
+                        <tr>
+                            <td>${item.date || ''}</td>
+                            <td>${item.description || ''}</td>
+                            <td>${item.qty || ''}</td>
+                            <td>₱${item.price ? item.price.toLocaleString() : ''}</td>
+                            <td>₱${item.qty && item.price ? (item.qty * item.price).toLocaleString() : ''}</td>
+                            <td>₱${item.amount ? item.amount.toLocaleString() : ''}</td>
+                        </tr>
+                    `).join('')}
+                </table>
+            `;
+        }
+
+        // Helper to convert "YYYY-MM" to "MonthName"
+        function getMonthName(monthKey) {
+            const [year, month] = monthKey.split('-');
+            const date = new Date(year, parseInt(month, 10) - 1, 1);
+            return date.toLocaleString('default', { month: 'long' });
+        }
+
+        function renderSalesByWeek(sales) {
+            // --- Filter options ---
+            const departments = [...new Set(sales.map(item => item.department).filter(Boolean))].sort();
+            const categories = [...new Set(sales.map(item => item.category).filter(Boolean))].sort();
+            const groups = [...new Set(sales.map(item => item.menu).filter(Boolean))].sort();
+
+            // --- Filter UI ---
+            document.getElementById('branchReportTables').innerHTML = `
+                <div style="margin-bottom:1rem;display:flex;gap:1rem;justify-content:center;align-items:center;">
+                    <label for="filterType">Show by:</label>
+                    <select id="filterType" style="padding:4px 8px;border-radius:5px;">
+                        <option value="department">Department</option>
+                        <option value="category">Category</option>
+                        <option value="group">Group</option>
+                    </select>
+                    <select id="filterValue" style="padding:4px 8px;border-radius:5px;">
+                        <option value="">All</option>
+                    </select>
+                    <label for="menuSearchInput">Product Name:</label>
+                    <input type="text" id="menuSearchInput" placeholder="Type product name..." style="padding:4px 8px;border-radius:5px;border:1px solid #229954;">
+                    <button id="filterWeekBtn" style="padding:4px 12px;background:#229954;color:#fff;border:none;border-radius:5px;">Filter</button>
+                    <button id="exportWeekBtn" style="padding:4px 12px;background:#884EA0;color:#fff;border:none;border-radius:5px;">Export</button>
+                </div>
+                <div id="salesByWeekTableDiv"></div>
+            `;
+
+            // --- Update filterValue options ---
+            function updateFilterValueOptions() {
+                const type = document.getElementById('filterType').value;
+                let options = [];
+                if (type === 'department') options = departments;
+                else if (type === 'category') options = categories;
+                else if (type === 'group') options = groups;
+                document.getElementById('filterValue').innerHTML =
+                    `<option value="">All</option>` +
+                    options.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+            }
+            document.getElementById('filterType').onchange = () => {
+                updateFilterValueOptions();
+                document.getElementById('filterWeekBtn').click();
+            };
+            document.getElementById('filterValue').onchange = () => {
+                document.getElementById('filterWeekBtn').click();
+            };
+            updateFilterValueOptions();
+
+            function showTable(filteredSales) {
+                const weekMap = {};
+                const productMap = {};
+                const monthSet = new Set();
+
+                filteredSales.forEach(item => {
+                    const date = item.date ? new Date(item.date) : null;
+                    if (!date) return;
+                    const week = getWeekNumber(date);
+                    const year = date.getFullYear();
+                    const month = date.getMonth() + 1;
+                    const monthLabel = `${year}-${month.toString().padStart(2, '0')}`;
+                    monthSet.add(monthLabel);
+                    const weekKey = `${year}-W${week}`;
+                    const prodKey = [
+                        item.barcode, item.menu, item.description, item.department,
+                        item.category, item.subCategory, item.dishSize, item.costPrice, item.price
+                    ].map(v => v || '').join('|');
+
+                    if (!productMap[prodKey]) {
+                        productMap[prodKey] = {
+                            barcode: item.barcode || '',
+                            group: item.menu || '',
+                            menu: item.description || '',
+                            department: item.department || '',
+                            category: item.category || '',
+                            subCategory: item.subCategory || '',
+                            dishSize: item.dishSize || '',
+                            costPrice: item.costPrice || '',
+                            price: item.price || ''
+                        };
+                    }
+
+                    if (!weekMap[weekKey]) weekMap[weekKey] = {};
+                    if (!weekMap[weekKey][prodKey]) {
+                        weekMap[weekKey][prodKey] = { qty: 0, gross: 0, netAmount: 0, month: monthLabel };
+                    }
+                    weekMap[weekKey][prodKey].qty += Number(item.qty) || 0;
+                    weekMap[weekKey][prodKey].gross += Number(item.gross) || 0;
+                    weekMap[weekKey][prodKey].netAmount += Number(item.amount) || 0;
+                });
+
+                // Sort productKeys by department, category, subcategory, group, menu
+                const productKeys = Object.keys(productMap).sort((a, b) => {
+                    const pa = productMap[a], pb = productMap[b];
+                    return (
+                        (pa.department || '').localeCompare(pb.department || '') ||
+                        (pa.category || '').localeCompare(pb.category || '') ||
+                        (pa.subCategory || '').localeCompare(pb.subCategory || '') ||
+                        (pa.group || '').localeCompare(pb.group || '') ||
+                        (pa.menu || '').localeCompare(pb.menu || '')
+                    );
+                });
+
+                // Sort weeks and months from latest to oldest
+                const weekKeys = Object.keys(weekMap).sort((a, b) => {
+                    const [ay, aw] = a.split('-W').map(Number);
+                    const [by, bw] = b.split('-W').map(Number);
+                    if (ay !== by) return by - ay;
+                    return bw - aw;
+                });
+                const monthKeys = Array.from(monthSet).sort().reverse();
+
+                // Group weeks by month (latest to oldest)
+                const weeksByMonth = {};
+                weekKeys.forEach(wk => {
+                    const monthLabel = Object.values(weekMap[wk])[0]?.month;
+                    if (!weeksByMonth[monthLabel]) weeksByMonth[monthLabel] = [];
+                    weeksByMonth[monthLabel].push(wk);
+                });
+                const orderedMonths = Object.keys(weeksByMonth).sort().reverse();
+
+                let table = `
+                <h3>Sales By Week</h3>
+                <div class="report-table-scroll">
+                <table class="report-table" style="min-width:1200px;">
+                <thead>
+                    <tr style="position:sticky;top:0;z-index:2;">
+                        <th rowspan="2" style="background:#229954;color:#fff;">Barcode</th>
+                        <th rowspan="2" style="background:#229954;color:#fff;">Group</th>
+                        <th rowspan="2" style="background:#229954;color:#fff;">Menu</th>
+                        <th rowspan="2" style="background:#229954;color:#fff;">Department</th>
+                        <th rowspan="2" style="background:#229954;color:#fff;">Category</th>
+                        <th rowspan="2" style="background:#229954;color:#fff;">Subcategory</th>
+                        <th rowspan="2" style="background:#229954;color:#fff;">Size</th>
+                        <th rowspan="2" style="background:#229954;color:#fff;">Cost</th>
+                        <th rowspan="2" style="background:#229954;color:#fff;">Price</th>
+                        ${orderedMonths.map(month => `
+                            ${weeksByMonth[month].map((wk, i, arr) => `
+                                <th colspan="3" style="background:#229954;color:#fff;${i === arr.length - 1 ? 'border-right:6px solid #229954;' : 'border-right:4px solid #145a32;'}">${wk}</th>
+                            `).join('')}
+                            <th colspan="3" style="background:#145a32;color:#fff;border-right:6px solid #229954;">${getMonthName(month)} Total</th>
+                        `).join('')}
+                    </tr>
+                    <tr style="position:sticky;top:38px;z-index:2;">
+                        ${orderedMonths.map(month => `
+                            ${weeksByMonth[month].map((wk, i, arr) => `
+                                <th style="background:#229954;color:#fff;${i === arr.length - 1 ? 'border-right:1px solid #229954;' : 'border-right:1px solid #145a32;'}">Qty</th>
+                                <th style="background:#229954;color:#fff;${i === arr.length - 1 ? 'border-right:1px solid #229954;' : 'border-right:1px solid #145a32;'}">Gross</th>
+                                <th style="background:#229954;color:#fff;${i === arr.length - 1 ? 'border-right:4px solid #229954;' : 'border-right:4px solid #145a32;'}">Net</th>
+                            `).join('')}
+                            <th style="background:#145a32;color:#fff;border-right:1px solid #229954;">Qty</th>
+                            <th style="background:#145a32;color:#fff;border-right:1px solid #229954;">Gross</th>
+                            <th style="background:#145a32;color:#fff;border-right:4px solid #229954;">Net</th>
+                        `).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+                    ${productKeys.map(prodKey => {
+                        const prod = productMap[prodKey];
+                        return `
+                            <tr>
+                                <td style="text-align:left;">${prod.barcode}</td>
+                                <td style="text-align:left;">${prod.group}</td>
+                                <td style="text-align:left;">${prod.menu}</td>
+                                <td style="text-align:left;">${prod.department}</td>
+                                <td style="text-align:left;">${prod.category}</td>
+                                <td style="text-align:left;">${prod.subCategory}</td>
+                                <td style="text-align:left;">${prod.dishSize}</td>
+                                <td style="text-align:right;">₱${prod.costPrice ? Number(prod.costPrice).toLocaleString() : ''}</td>
+                                <td style="text-align:right;">₱${prod.price ? Number(prod.price).toLocaleString() : ''}</td>
+                                ${orderedMonths.map(month => {
+                                    const weekCells = weeksByMonth[month].map((wk, i, arr) => {
+                                        const data = weekMap[wk][prodKey] || { qty: 0, gross: 0, netAmount: 0 };
+                                        return `
+                                            <td style="text-align:right;border-right:1px solid #145a32;">${data.qty}</td>
+                                            <td style="text-align:right;border-right:1px solid #145a32;">₱${data.gross.toLocaleString()}</td>
+                                            <td style="text-align:right;border-right:4px solid #145a32;">₱${data.netAmount.toLocaleString()}</td>
+                                        `;
+                                    }).join('');
+                                    let qty = 0, gross = 0, net = 0;
+                                    weeksByMonth[month].forEach(wk => {
+                                        const data = weekMap[wk][prodKey];
+                                        if (data) {
+                                            qty += Number(data.qty) || 0;
+                                            gross += Number(data.gross) || 0;
+                                            net += Number(data.netAmount) || 0;
+                                        }
+                                    });
+                                    const monthTotalCells = `
+                                        <td style="text-align:right;background:#eafaf1;font-weight:bold;">${qty}</td>
+                                        <td style="text-align:right;background:#eafaf1;font-weight:bold;">₱${gross.toLocaleString()}</td>
+                                        <td style="text-align:right;background:#eafaf1;font-weight:bold;border-right:6px solid #229954;">₱${net.toLocaleString()}</td>
+                                    `;
+                                    return weekCells + monthTotalCells;
+                                }).join('')}
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+                </table>
+                </div>
+                `;
+                document.getElementById('salesByWeekTableDiv').innerHTML = table;
+            }
+
+            // Initial table
+            showTable(sales);
+            
+            // Inside renderSalesByWeek, after showTable(sales):
+
+document.getElementById('exportWeekBtn').onclick = function () {
+    const table = document.querySelector('#salesByWeekTableDiv table');
+    if (!table) return;
+    const ws = XLSX.utils.table_to_sheet(table);
+
+    // Ensure barcode column (first column) is exported as text
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = range.s.r + 1; R <= range.e.r; ++R) { // skip header row
+        const cellAddr = XLSX.utils.encode_cell({ r: R, c: 0 });
+        const cell = ws[cellAddr];
+        if (cell && typeof cell.v !== 'undefined') {
+            cell.t = 's'; // force type to string/text
+        }
+    }
+
+    // Autofit columns
+    const cols = [];
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+        let maxLen = 10;
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+            const cell = ws[XLSX.utils.encode_cell({r: R, c: C})];
+            if (cell && cell.v != null) {
+                const text = String(cell.v).replace(/<[^>]*>/g, '');
+                const len = text.split('').reduce((acc, ch) => acc + (ch.charCodeAt(0) > 255 ? 2 : 1), 0);
+                if (len > maxLen) maxLen = len;
+            }
+        }
+        cols.push({ wch: maxLen + 2 });
+    }
+    ws['!cols'] = cols;
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "SalesByWeek");
+    XLSX.writeFile(wb, "SalesByWeek.xlsx");
+};
+
+            // Filter logic
+            document.getElementById('filterWeekBtn').onclick = () => {
+                const filterType = document.getElementById('filterType').value;
+                const filterValue = document.getElementById('filterValue').value;
+                const search = document.getElementById('menuSearchInput').value.trim().toLowerCase();
+                let filtered = sales;
+                if (filterValue) {
+                    if (filterType === 'department') filtered = filtered.filter(item => item.department === filterValue);
+                    else if (filterType === 'category') filtered = filtered.filter(item => item.category === filterValue);
+                    else if (filterType === 'group') filtered = filtered.filter(item => item.menu === filterValue);
+                }
+                if (search) {
+                    filtered = filtered.filter(item => (item.description || '').toLowerCase().includes(search));
+                }
+                showTable(filtered);
+            };
+
+            // Export logic
+            document.getElementById('exportWeekBtn').onclick = function () {
+                const table = document.querySelector('#salesByWeekTableDiv table');
+                if (!table) return;
+                const ws = XLSX.utils.table_to_sheet(table);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "SalesByWeek");
+                XLSX.writeFile(wb, "SalesByWeek.xlsx");
+            };
+        }
+
+function renderSalesByMonth(sales) {
+    // Helper for formatting numbers
+    function fmt(num) {
+        return Number(num).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // Group sales by year-month and department, and also prepare month totals
+    const summary = {};
+    const monthTotals = {};
+    sales.forEach(item => {
+        const date = item.date ? new Date(item.date) : null;
+        if (!date) return;
+        const month = date.getMonth() + 1;
+        const year = date.getFullYear();
+        const ym = `${year}-${month.toString().padStart(2, '0')}`;
+        const dept = item.department || "Unspecified";
+        if (!summary[ym]) summary[ym] = {};
+        if (!summary[ym][dept]) {
+            summary[ym][dept] = {
+                year,
+                month,
+                department: dept,
+                qty: 0,
+                gross: 0,
+                net: 0
+            };
+        }
+        summary[ym][dept].qty += Number(item.qty) || 0;
+        summary[ym][dept].gross += Number(item.gross) || 0;
+        summary[ym][dept].net += Number(item.amount) || 0;
+
+        // Month totals
+        if (!monthTotals[ym]) monthTotals[ym] = { qty: 0, gross: 0, net: 0 };
+        monthTotals[ym].qty += Number(item.qty) || 0;
+        monthTotals[ym].gross += Number(item.gross) || 0;
+        monthTotals[ym].net += Number(item.amount) || 0;
+    });
+
+    // Sort months descending
+    const months = Object.keys(summary).sort((a, b) => b.localeCompare(a));
+
+    // Calculate grand totals for all months
+    let grandQty = 0, grandGross = 0, grandNet = 0;
+    Object.values(monthTotals).forEach(t => {
+        grandQty += t.qty;
+        grandGross += t.gross;
+        grandNet += t.net;
+    });
+
+    // Buttons
+    let html = `
+    <div style="text-align:right;margin-bottom:10px;">
+        <button id="exportMonthBtn" style="padding:6px 18px;background:#884EA0;color:#fff;border:none;border-radius:5px;">Export</button>
+    </div>
+    `;
+
+    // Monthly summary table
+    html += `
+    <h3>Monthly Summary</h3>
+    <div style="overflow-x:auto; max-height:400px; overflow-y:auto;">
+    <table id="monthlySummaryTable" class="report-table" style="min-width:400px; width:100%; max-width:100%;">
+        <thead>
+        <tr>
+            <th>Year-Month</th>
+            <th>Total Qty</th>
+            <th>Total Gross</th>
+            <th>Total Net</th>
+        </tr>
+        </thead>
+        <tbody>
+        ${Object.entries(monthTotals).sort((a, b) => b[0].localeCompare(a[0])).map(([ym, t]) => `
+            <tr>
+                <td>${getMonthName(ym)} ${ym.split('-')[0]}</td>
+                <td>${fmt(t.qty)}</td>
+                <td>₱${fmt(t.gross)}</td>
+                <td>₱${fmt(t.net)}</td>
+            </tr>
+        `).join('')}
+        <tr style="font-weight:bold;background:#eafaf1;">
+            <td>Totals</td>
+            <td>${fmt(grandQty)}</td>
+            <td>₱${fmt(grandGross)}</td>
+            <td>₱${fmt(grandNet)}</td>
+        </tr>
+        </tbody>
+    </table>
+    </div>
+    `;
+
+    // Per-month tables
+    html += `<h3>Sales By Month (Grouped by Department)</h3>`;
+    months.forEach(ym => {
+        html += `
+        <div style="margin-bottom:2rem; max-height:400px; overflow:auto;">
+            <h4 style="margin-bottom:0.5rem;">${getMonthName(ym)} ${ym.split('-')[0]}</h4>
+            <div style="overflow-x:auto;">
+            <table class="report-table month-dept-table" data-month="${ym}" style="min-width:400px; width:100%; max-width:100%;">
+                <thead>
+                <tr>
+                    <th>Department</th>
+                    <th>Total Qty</th>
+                    <th>Total Gross</th>
+                    <th>Total Net</th>
+                </tr>
+                </thead>
+                <tbody>
+                ${Object.values(summary[ym])
+                    .sort((a, b) => b.net - a.net)
+                    .map(item => `
+                    <tr>
+                        <td>${item.department}</td>
+                        <td>${fmt(item.qty)}</td>
+                        <td>₱${fmt(item.gross)}</td>
+                        <td>₱${fmt(item.net)}</td>
+                    </tr>
+                `).join('')}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        `;
+    });
+
+    document.getElementById('branchReportTables').innerHTML = html;
+
+    // --- Export logic for all in Sales By Month (Monthly Summary + all month tables) ---
+    document.getElementById('exportMonthBtn').onclick = function () {
+        const wb = XLSX.utils.book_new();
+
+        // Add Monthly Summary
+        const summaryTable = document.getElementById('monthlySummaryTable');
+        if (summaryTable) {
+            const wsSummary = XLSX.utils.table_to_sheet(summaryTable);
+            XLSX.utils.book_append_sheet(wb, wsSummary, "MonthlySummary");
+        }
+
+        // Add each month-dept table as a sheet
+        const tables = document.querySelectorAll('.month-dept-table');
+        tables.forEach((table, idx) => {
+            const ws = XLSX.utils.table_to_sheet(table);
+            XLSX.utils.book_append_sheet(wb, ws, table.getAttribute('data-month') || `Month${idx+1}`);
+        });
+
+        XLSX.writeFile(wb, "SalesByMonthReport.xlsx");
+    };
+
+    // --- Print logic for all tables in Sales By Month ---
+    // Add the print button if not already present
+    if (!document.getElementById('printMonthBtn')) {
+        const btn = document.createElement('button');
+        btn.id = 'printMonthBtn';
+        btn.textContent = 'Print';
+        btn.style = "padding:6px 18px;background:#229954;color:#fff;border:none;border-radius:5px;margin-left:8px;";
+        document.getElementById('exportMonthBtn').after(btn);
+    }
+
+    document.getElementById('printMonthBtn').onclick = function () {
+        window.print();
+    };
+}   
+
+        function getWeekNumber(date) {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const day = d.getUTCDay();
+            const diff = (day === 0 ? -6 : 1) - day;
+            d.setUTCDate(d.getUTCDate() + diff);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            const days = Math.floor((d - yearStart) / 86400000);
+            return Math.ceil((days + 1) / 7);
+        }
+
+        document.getElementById('viewMenuBtn').onclick = () => renderMenuSales(filteredSales);
+        document.getElementById('viewSalesDetailsBtn').onclick = () => renderSalesDetails(filteredSales);
+        document.getElementById('viewSalesDetailsBtn').textContent = "View Details";
+        document.getElementById('viewByWeekBtn').onclick = () => renderSalesByWeek(filteredSales);
+        document.getElementById('viewByMonthBtn').onclick = () => renderSalesByMonth(filteredSales);
+
+        document.getElementById('branchTitle').textContent = branch.name + " Branch Report";
+        setupDateRange();
+
+        function setActiveButton(btnId) {
+            document.querySelectorAll('.dashboard-container > div > button, .dashboard-container > button').forEach(btn => {
+                btn.classList.remove('active-btn');
+                btn.style.transform = '';
+                btn.style.boxShadow = '';
+                btn.style.opacity = '';
+            });
+            const btn = document.getElementById(btnId);
+            if (btn) {
+                btn.classList.add('active-btn');
+                btn.style.transform = 'scale(1.18)';
+                btn.style.boxShadow = '0 4px 24px rgba(34,153,84,0.18)';
+                btn.style.opacity = '1';
+            }
+        }
+
+        document.getElementById('viewMenuBtn').onclick = () => {
+            renderMenuSales(filteredSales);
+            setActiveButton('viewMenuBtn');
+        };
+        document.getElementById('viewSalesDetailsBtn').onclick = () => {
+            renderSalesDetails(filteredSales);
+            setActiveButton('viewSalesDetailsBtn');
+        };
+        document.getElementById('viewByWeekBtn').onclick = () => {
+            renderSalesByWeek(filteredSales);
+            setActiveButton('viewByWeekBtn');
+        };
+        document.getElementById('viewByMonthBtn').onclick = () => {
+            renderSalesByMonth(filteredSales);
+            setActiveButton('viewByMonthBtn');
+        };
+
+        document.getElementById('viewSalesDetailsBtn').textContent = "View Details";
+        document.getElementById('branchTitle').textContent = branch.name + " Branch Report";
+        setupDateRange();
+        setActiveButton('viewMenuBtn');
+    </script>
+</body>
+</html>

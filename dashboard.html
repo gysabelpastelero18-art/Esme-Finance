@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESMERALDA Dashboard</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: url('images/login-bg.jpg') no-repeat center center fixed;
+            background-size: cover;
+            color: #222;
+        }
+        .dashboard-container {
+            background: rgba(255,255,255,0.97);
+            max-width: 900px;
+            margin: 60px auto 0 auto;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(20,90,50,0.18);
+            padding: 2.5rem 2rem 2rem 2rem;
+            text-align: center;
+            position: relative;
+        }
+        .logout-btn {
+            position: absolute;
+            top: 24px;
+            right: 32px;
+            background: #229954;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            padding: 8px 18px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .site-title {
+            color: #145a32;
+            margin-bottom: 1.5rem;
+            font-size: 2.2rem;
+            letter-spacing: 1px;
+        }
+        .branch-icon {
+            width: 160px;
+            height: 60px;
+            background: linear-gradient(135deg, #229954 60%, #145a32 100%);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 2px 12px rgba(34,153,84,0.18);
+            transition: transform 0.15s;
+            margin-bottom: 8px;
+            margin-top: 8px;
+            border: 3px solid #fff;
+        }
+        .branch-icon:hover {
+            transform: scale(1.08);
+            box-shadow: 0 4px 24px rgba(34,153,84,0.25);
+        }
+        .branch-icons-row {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+        }
+        .branch-report {
+            background: #f8f8f8;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            padding: 1.5rem 1rem;
+            box-shadow: 0 2px 12px rgba(34,153,84,0.07);
+        }
+        .report-table {
+            width: 100%;
+            margin: 0 auto 1rem auto;
+            border-collapse: collapse;
+            background: #fff;
+        }
+        .report-table th, .report-table td {
+            border: 1px solid #229954;
+            padding: 8px;
+            color: #145a32;
+        }
+        .report-table th {
+            background: #229954;
+            color: #fff;
+        }
+        .import-btn {
+            background: #229954;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            padding: 8px 18px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-bottom: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Home icon button -->
+        <button class="home-btn" onclick="window.location.href='access.html'" title="Home"
+            style="position:absolute;top:24px;left:32px;background:#fff;border:none;border-radius:50%;width:48px;height:48px;box-shadow:0 2px 8px rgba(20,90,50,0.12);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+            <span style="font-size:2rem;color:#229954;">🏠</span>
+        </button>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+        <h1 class="site-title">ESMERALDA Restaurant Dashboard</h1>
+        <input type="file" id="importExcel" accept=".xlsx,.xls" style="display:none" />
+        <button class="import-btn" onclick="document.getElementById('importExcel').click()">Import Data</button>
+        <div id="branchIcons" class="branch-icons-row"></div>
+        <div id="overallSummary"></div>
+        <div id="branchSummary"></div>
+    </div>
+    <script>
+        let data = {
+            branches: [
+                { name: "Mayon", sales: [], expenses: [] },
+                { name: "One Balete", sales: [], expenses: [] }
+            ]
+        };
+
+        function logout() {
+            window.location.href = "index.html";
+        }
+
+        function excelDateToISO(dateValue) {
+            if (typeof dateValue === "number") {
+                const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+                const ms = dateValue * 24 * 60 * 60 * 1000;
+                const d = new Date(excelEpoch.getTime() + ms);
+                return d.toISOString().slice(0, 10);
+            }
+            if (typeof dateValue === "string" && dateValue.length >= 8) {
+                const d = new Date(dateValue);
+                if (!isNaN(d)) return d.toISOString().slice(0, 10);
+            }
+            return "";
+        }
+
+        document.getElementById('importExcel').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const workbook = XLSX.read(evt.target.result, { type: 'binary' });
+                const sheetNames = workbook.SheetNames;
+
+                data.branches.forEach(branch => {
+                    branch.sales = [];
+                    branch.expenses = [];
+                });
+
+                const salesSheet = workbook.Sheets[sheetNames[0]];
+                const salesRows = XLSX.utils.sheet_to_json(salesSheet, { defval: "" });
+                salesRows.forEach(row => {
+                    const branchName = row.Branch ? row.Branch.trim().toLowerCase() : "";
+                    let branchIdx = branchName === "mayon" ? 0 : branchName === "one balete" ? 1 : -1;
+                    if (branchIdx !== -1 && row.ProductName) {
+                        data.branches[branchIdx].sales.push({
+                            description: row.ProductName,
+                            amount: Number(row.NetAmount) || 0,
+                            date: excelDateToISO(row.Date || row.SalesDate || row.TransDate),
+                            department: row.Department || "",
+                            category: row.Category || "",
+                            subCategory: row.SubCategory || "",
+                            barcode: row.Barcode || "",
+                            menu: row.Menu || "",
+                            dishSize: row.DishSize || "",
+                            costPrice: Number(row.CostPrice) || 0,
+                            price: Number(row.Price) || 0,
+                            qty: Number(row.Qty) || 0,
+                            gross: Number(row.Gross) || 0,
+                            lessVat: Number(row.LessVat) || 0,
+                            vatSales: Number(row.VatSales) || 0,
+                            discount: Number(row.Discount) || 0,
+                            addVat: Number(row.AddVat) || 0
+                        });
+                    }
+                });
+
+                const expensesSheet = workbook.Sheets[sheetNames[1]] || salesSheet;
+                const expensesRows = XLSX.utils.sheet_to_json(expensesSheet, { defval: "" });
+                expensesRows.forEach(row => {
+                    const branchName = row.Branch ? row.Branch.trim().toLowerCase() : "";
+                    let branchIdx = branchName === "mayon" ? 0 : branchName === "one balete" ? 1 : -1;
+                    if (branchIdx !== -1 && row.InvoiceDate && row.Amount) {
+                        data.branches[branchIdx].expenses.push({
+                            description: row.Item || row.Category || "",
+                            amount: Number(row.Amount) || 0,
+                            date: excelDateToISO(row.InvoiceDate),
+                            department: row.Group || "",
+                            category: row.Category || "",
+                            supplier: row.Supplier || "",
+                            invoiceNo: row.InvoiceNo || "",
+                            subCategory: row.SubCategory || "",
+                            inCode: row.InCode || "",
+                            uom: row.UOM || "",
+                            unit: row.Unit || "",
+                            qty: Number(row.Qty) || 0,
+                            price: Number(row.Price) || 0,
+                            gramsQty: Number(row.GramsQty) || 0,
+                            wk: row.WK || "",
+                            month: row.Month || "",
+                            year: row.Year || ""
+                        });
+                    }
+                });
+                // ...inside reader.onload after parsing salesRows and expensesRows...
+                localStorage.setItem('esmeraldaData', JSON.stringify(data));
+                showBranchIcons();
+                renderOverallSummary();
+                document.getElementById('branchSummary').innerHTML = '<div style="color:#229954;">Sales & expenses data imported! Click a branch to view report.</div>';
+            };
+            reader.readAsBinaryString(file);
+        });
+
+        function showBranchIcons() {
+    const iconsDiv = document.getElementById('branchIcons');
+    iconsDiv.innerHTML = '';
+    data.branches.forEach((branch, idx) => {
+        const icon = document.createElement('button');
+        icon.className = 'branch-icon';
+        icon.title = branch.name;
+        icon.type = 'button';
+        icon.innerHTML = `<span style="font-size:1.1rem;font-weight:bold;">${branch.name}</span>`;
+        icon.onclick = () => {
+            // Go to branch-report.html with branch index
+            window.location.href = `branch-report.html?branch=${idx}`;
+        };
+        iconsDiv.appendChild(icon);
+    });
+    renderOverallSummary();
+    document.getElementById('branchSummary').innerHTML = '<div style="text-align:center;color:#229954;font-size:1.2rem;">Click a branch button to view its report.</div>';
+}
+
+        function renderOverallSummary() {
+            // Date filter controls
+            let minDate = "", maxDate = "";
+            let allDates = [];
+            data.branches.forEach(branch => {
+                allDates = allDates.concat(branch.sales.map(x => x.date).filter(Boolean));
+                allDates = allDates.concat(branch.expenses.map(x => x.date).filter(Boolean));
+            });
+            if (allDates.length) {
+                minDate = allDates.reduce((a, b) => a < b ? a : b);
+                maxDate = allDates.reduce((a, b) => a > b ? a : b);
+            }
+
+            document.getElementById('overallSummary').innerHTML = `
+                <div class="branch-report" style="margin-top:2rem;">
+                    <h2>All Branches Summary</h2>
+                    <div style="margin-bottom:1rem;">
+                        <label for="fromDate">From:</label>
+                        <input type="date" id="fromDate" value="${minDate}">
+                        <label for="toDate">To:</label>
+                        <input type="date" id="toDate" value="${maxDate}">
+                        <button id="filterOverallBtn" style="padding:4px 12px;background:#229954;color:#fff;border:none;border-radius:5px;">Show</button>
+                    </div>
+                    <div id="branchesCompareGraph" style="margin-bottom:2rem;"></div>
+                    <div id="branchesTables"></div>
+                </div>
+            `;
+            document.getElementById('filterOverallBtn').onclick = filterOverallSummary;
+            filterOverallSummary();
+        }
+
+        function filterOverallSummary() {
+            const fromDate = document.getElementById('fromDate').value;
+            const toDate = document.getElementById('toDate').value;
+            let html = `<div style="display:flex;gap:2rem;flex-wrap:wrap;justify-content:center;">`;
+
+            // Prepare graph data
+            let branchLabels = [];
+            let salesTotals = [];
+            let expensesTotals = [];
+
+            data.branches.forEach(branch => {
+                // Filter by date
+                let sales = branch.sales;
+                let expenses = branch.expenses;
+                if (fromDate) sales = sales.filter(x => x.date >= fromDate);
+                if (toDate) sales = sales.filter(x => x.date <= toDate);
+                if (fromDate) expenses = expenses.filter(x => x.date >= fromDate);
+                if (toDate) expenses = expenses.filter(x => x.date <= toDate);
+
+                // Sales summary by department
+                let salesDept = {};
+                let salesTotal = 0;
+                sales.forEach(item => {
+                    salesDept[item.department || "Unspecified"] = (salesDept[item.department || "Unspecified"] || 0) + Number(item.amount);
+                    salesTotal += Number(item.amount) || 0;
+                });
+
+                // Expenses summary by department
+                let expensesDept = {};
+                let expensesTotal = 0;
+                expenses.forEach(item => {
+                    expensesDept[item.department || "Unspecified"] = (expensesDept[item.department || "Unspecified"] || 0) + Number(item.amount);
+                    expensesTotal += Number(item.amount) || 0;
+                });
+
+                branchLabels.push(branch.name);
+                salesTotals.push(salesTotal);
+                expensesTotals.push(expensesTotal);
+
+                html += `
+                <div style="min-width:340px;">
+                    <h3>${branch.name} Branch</h3>
+                    <table class="report-table">
+                        <tr><th colspan="2">Sales Summary</th></tr>
+                        ${Object.entries(salesDept).map(([dept, amt]) => `<tr><td>${dept}</td><td>₱${amt.toLocaleString()}</td></tr>`).join('')}
+                        <tr><th>Total Sales</th><th>₱${salesTotal.toLocaleString()}</th></tr>
+                    </table>
+                    <table class="report-table">
+                        <tr><th colspan="2">Expenses Summary</th></tr>
+                        ${Object.entries(expensesDept).map(([dept, amt]) => `<tr><td>${dept}</td><td>₱${amt.toLocaleString()}</td></tr>`).join('')}
+                        <tr><th>Total Expenses</th><th>₱${expensesTotal.toLocaleString()}</th></tr>
+                    </table>
+                </div>
+                `;
+            });
+
+            html += `</div>`;
+            document.getElementById('branchesTables').innerHTML = html;
+
+            // Render comparison graph
+            document.getElementById('branchesCompareGraph').innerHTML = `<canvas id="branchesChart" height="60"></canvas>`;
+            const ctx = document.getElementById('branchesChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: branchLabels,
+                    datasets: [
+                        {
+                            label: 'Sales',
+                            data: salesTotals,
+                            backgroundColor: '#229954'
+                        },
+                        {
+                            label: 'Expenses',
+                            data: expensesTotals,
+                            backgroundColor: '#b94a48'
+                        }
+                    ]
+                },
+                options: {
+                    plugins: { legend: { display: true } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        function showBranchSummary(idx) {
+    const branch = data.branches[idx];
+    // ...existing code...
+    let filteredSales = branch.sales;
+    let filteredExpenses = branch.expenses;
+
+    // Filter by date range
+    const fromDate = document.getElementById('fromDate') ? document.getElementById('fromDate').value : "";
+    const toDate = document.getElementById('toDate') ? document.getElementById('toDate').value : "";
+    if (fromDate) filteredSales = filteredSales.filter(x => x.date >= fromDate);
+    if (toDate) filteredSales = filteredSales.filter(x => x.date <= toDate);
+    if (fromDate) filteredExpenses = filteredExpenses.filter(x => x.date >= fromDate);
+    if (toDate) filteredExpenses = filteredExpenses.filter(x => x.date <= toDate);
+
+    document.getElementById('viewMenuBtn').onclick = () => {
+        renderMenuSales(filteredSales);
+    };
+    document.getElementById('viewSalesDetailsBtn').onclick = () => {
+        renderSalesDetails(filteredSales);
+    };
+    document.getElementById('viewByWeekBtn').onclick = () => {
+        renderSalesByWeek(filteredSales);
+    };
+    document.getElementById('viewByMonthBtn').onclick = () => {
+        renderSalesByMonth(filteredSales);
+    };
+}
+
+        function renderBranchGraph(branch) {
+            document.getElementById('branchGraphDiv').innerHTML = `<canvas id="branchChart" height="80"></canvas>`;
+            const salesTotal = branch.sales.reduce((sum, item) => sum + Number(item.amount), 0);
+            const expensesTotal = branch.expenses.reduce((sum, item) => sum + Number(item.amount), 0);
+
+            if (typeof Chart === "undefined") {
+                const script = document.createElement('script');
+                script.src = "https://cdn.jsdelivr.net/npm/chart.js";
+                script.onload = () => drawChart();
+                document.head.appendChild(script);
+            } else {
+                drawChart();
+            }
+
+            function drawChart() {
+                const ctx = document.getElementById('branchChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Sales', 'Expenses'],
+                        datasets: [{
+                            label: 'Amount',
+                            data: [salesTotal, expensesTotal],
+                            backgroundColor: ['#229954', '#b94a48']
+                        }]
+                    },
+                    options: {
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+            }
+        }
+
+        function renderBranchSummaries(branch) {
+            // Sales summary by department
+            const salesDept = {};
+            branch.sales.forEach(item => {
+                salesDept[item.department] = (salesDept[item.department] || 0) + Number(item.amount);
+            });
+            const totalSales = Object.values(salesDept).reduce((sum, amt) => sum + amt, 0);
+
+            // Expenses summary by department
+            const expensesDept = {};
+            branch.expenses.forEach(item => {
+                expensesDept[item.department] = (expensesDept[item.department] || 0) + Number(item.amount);
+            });
+            const totalExpenses = Object.values(expensesDept).reduce((sum, amt) => sum + amt, 0);
+
+            document.getElementById('branchReportTables').innerHTML = `
+                <h3>Sales Summary by Department</h3>
+                <table class="report-table">
+                    <tr><th>Department</th><th>Total Sales Amount</th></tr>
+                    ${Object.entries(salesDept).map(([dept, amt]) => `<tr><td>${dept}</td><td>₱${amt.toLocaleString()}</td></tr>`).join('')}
+                    <tr><th>Total Sales</th><th>₱${totalSales.toLocaleString()}</th></tr>
+                </table>
+                <h3>Expenses Summary by Department</h3>
+                <table class="report-table">
+                    <tr><th>Department</th><th>Total Expenses Amount</th></tr>
+                    ${Object.entries(expensesDept).map(([dept, amt]) => `<tr><td>${dept}</td><td>₱${amt.toLocaleString()}</td></tr>`).join('')}
+                    <tr><th>Total Expenses</th><th>₱${totalExpenses.toLocaleString()}</th></tr>
+                </table>
+            `;
+        }
+
+        // View Menu: summarized sales by product name, with filter/search
+        function renderMenuSales(sales) {
+            const departments = [...new Set(sales.map(item => item.department).filter(Boolean))];
+            document.getElementById('branchReportTables').innerHTML = `
+                <div style="margin-bottom:1rem;display:flex;gap:1rem;justify-content:center;align-items:center;">
+                    <label for="deptSelectMenu">Department:</label>
+                    <select id="deptSelectMenu">
+                        <option value="">All</option>
+                        ${departments.map(d => `<option value="${d}">${d}</option>`).join('')}
+                    </select>
+                    <label for="prodSearchMenu">Product Name:</label>
+                    <input type="text" id="prodSearchMenu" placeholder="Search product name..." style="padding:4px 8px;border-radius:5px;border:1px solid #229954;">
+                    <button id="filterMenuSalesBtn" style="padding:4px 12px;background:#229954;color:#fff;border:none;border-radius:5px;">Filter</button>
+                </div>
+                <div id="menuSalesTableDiv"></div>
+            `;
+            renderMenuSalesTable(sales);
+
+            document.getElementById('filterMenuSalesBtn').onclick = () => {
+                const dept = document.getElementById('deptSelectMenu').value;
+                const prodSearch = document.getElementById('prodSearchMenu').value.trim().toLowerCase();
+                let filtered = sales;
+                if (dept) filtered = filtered.filter(item => item.department === dept);
+                if (prodSearch) filtered = filtered.filter(item => item.description.toLowerCase().includes(prodSearch));
+                renderMenuSalesTable(filtered);
+            };
+        }
+
+        function renderMenuSalesTable(sales) {
+            const summary = {};
+            sales.forEach(item => {
+                const key = item.department + '|' + item.description;
+                if (!summary[key]) {
+                    summary[key] = {
+                        department: item.department,
+                        description: item.description,
+                        amount: 0
+                    };
+                }
+                summary[key].amount += Number(item.amount) || 0;
+            });
+            const summarizedSales = Object.values(summary).sort((a, b) => b.amount - a.amount);
+
+            const table = summarizedSales.length ? `
+                <h3>All Sales Data (Summarized by Product Name)</h3>
+                <table class="report-table">
+                    <tr>
+                        <th>Department</th>
+                        <th>Product Name</th>
+                        <th>Total Amount</th>
+                    </tr>
+                    ${summarizedSales.map(item => `
+                        <tr>
+                            <td>${item.department}</td>
+                            <td>${item.description}</td>
+                            <td>₱${item.amount.toLocaleString()}</td>
+                        </tr>
+                    `).join('')}
+                </table>
+            ` : '<div style="color:#b94a48;">No sales data imported.</div>';
+            document.getElementById('menuSalesTableDiv').innerHTML = table;
+        }
+
+        // View Sales Details: summarized by product name and department
+        function renderSalesDetails(sales) {
+            const summary = {};
+            sales.forEach(item => {
+                const key = item.department + '|' + item.description;
+                if (!summary[key]) {
+                    summary[key] = {
+                        department: item.department,
+                        description: item.description,
+                        amount: 0
+                    };
+                }
+                summary[key].amount += Number(item.amount) || 0;
+            });
+            const summarizedSales = Object.values(summary).sort((a, b) => b.amount - a.amount);
+
+            document.getElementById('branchReportTables').innerHTML = `
+                <h3>Sales Details (Summarized by Product Name)</h3>
+                <table class="report-table">
+                    <tr>
+                        <th>Department</th>
+                        <th>Product Name</th>
+                        <th>Total Amount</th>
+                    </tr>
+                    ${summarizedSales.map(item => `
+                        <tr>
+                            <td>${item.department}</td>
+                            <td>${item.description}</td>
+                            <td>₱${item.amount.toLocaleString()}</td>
+                        </tr>
+                    `).join('')}
+                </table>
+            `;
+        }
+
+        // View By Week
+       function renderSalesByWeek(sales) {
+    // Group sales by week and product details
+    const weekMap = {};
+    const productMap = {};
+
+    sales.forEach(item => {
+        const date = item.date ? new Date(item.date) : null;
+        if (!date) return;
+        const week = getWeekNumber(date);
+        const year = date.getFullYear();
+        const weekKey = `${year}-W${week}`;
+        const prodKey = [
+            item.barcode, item.menu, item.description, item.department,
+            item.category, item.subCategory, item.dishSize, item.costPrice, item.price
+        ].map(v => v || '').join('|');
+
+        // Store product details
+        if (!productMap[prodKey]) {
+            productMap[prodKey] = {
+                barcode: item.barcode || '',
+                menu: item.menu || '',
+                productName: item.description || '',
+                department: item.department || '',
+                category: item.category || '',
+                subCategory: item.subCategory || '',
+                dishSize: item.dishSize || '',
+                costPrice: item.costPrice || '',
+                price: item.price || ''
+            };
+        }
+
+        // Store weekly data
+        if (!weekMap[weekKey]) weekMap[weekKey] = {};
+        if (!weekMap[weekKey][prodKey]) {
+            weekMap[weekKey][prodKey] = { qty: 0, gross: 0, netAmount: 0 };
+        }
+        weekMap[weekKey][prodKey].qty += Number(item.qty) || 0;
+        weekMap[weekKey][prodKey].gross += Number(item.gross) || 0;
+        weekMap[weekKey][prodKey].netAmount += Number(item.amount) || 0;
+    });
+
+    // Prepare table headers
+    const weekKeys = Object.keys(weekMap).sort();
+    const productKeys = Object.keys(productMap);
+
+    let table = `
+        <h3>Sales By Week</h3>
+        <table class="report-table">
+            <tr>
+                <th>Barcode</th>
+                <th>Menu</th>
+                <th>Product Name</th>
+                <th>Department</th>
+                <th>Category</th>
+                <th>Subcategory</th>
+                <th>Dish Size</th>
+                <th>Cost Price</th>
+                <th>Price</th>
+                ${weekKeys.map(wk => `
+                    <th>${wk} Qty</th>
+                    <th>${wk} Gross</th>
+                    <th>${wk} Net Amount</th>
+                `).join('')}
+            </tr>
+            ${productKeys.map(prodKey => {
+                const prod = productMap[prodKey];
+                return `
+                    <tr>
+                        <td>${prod.barcode}</td>
+                        <td>${prod.menu}</td>
+                        <td>${prod.productName}</td>
+                        <td>${prod.department}</td>
+                        <td>${prod.category}</td>
+                        <td>${prod.subCategory}</td>
+                        <td>${prod.dishSize}</td>
+                        <td>₱${prod.costPrice ? Number(prod.costPrice).toLocaleString() : ''}</td>
+                        <td>₱${prod.price ? Number(prod.price).toLocaleString() : ''}</td>
+                        ${weekKeys.map(wk => {
+                            const data = weekMap[wk][prodKey] || { qty: 0, gross: 0, netAmount: 0 };
+                            return `
+                                <td>${data.qty}</td>
+                                <td>₱${data.gross.toLocaleString()}</td>
+                                <td>₱${data.netAmount.toLocaleString()}</td>
+                            `;
+                        }).join('')}
+                    </tr>
+                `;
+            }).join('')}
+        </table>
+    `;
+
+    document.getElementById('branchReportTables').innerHTML = table;
+}
+
+        // View By Month
+        function renderSalesByMonth(sales) {
+            const summary = {};
+            sales.forEach(item => {
+                const date = item.date ? new Date(item.date) : null;
+                if (!date) return;
+                const month = date.getMonth() + 1;
+                const year = date.getFullYear();
+                const key = year + '-' + month + '|' + item.department;
+                if (!summary[key]) {
+                    summary[key] = {
+                        year,
+                        month,
+                        department: item.department,
+                        amount: 0
+                    };
+                }
+                summary[key].amount += Number(item.amount) || 0;
+            });
+            const summarized = Object.values(summary).sort((a, b) => (a.year - b.year) || (a.month - b.month));
+
+            document.getElementById('branchReportTables').innerHTML = `
+                <h3>Sales By Month</h3>
+                <table class="report-table">
+                    <tr>
+                        <th>Year-Month</th>
+                        <th>Department</th>
+                        <th>Total Amount</th>
+                    </tr>
+                    ${summarized.map(item => `
+                        <tr>
+                            <td>${item.year}-${item.month.toString().padStart(2, '0')}</td>
+                            <td>${item.department}</td>
+                            <td>₱${item.amount.toLocaleString()}</td>
+                        </tr>
+                    `).join('')}
+                </table>
+            `;
+        }
+        function getWeekNumber(date) {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+            return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+        }
+
+        showBranchIcons();
+    </script>
+</body>
+</html>
